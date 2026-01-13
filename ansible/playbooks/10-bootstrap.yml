@@ -1,0 +1,5 @@
+---
+- hosts: libresbc
+  become: yes
+  roles:
+    - bootstrap

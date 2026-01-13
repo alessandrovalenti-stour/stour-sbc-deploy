@@ -1,0 +1,7 @@
+---
+- hosts: libresbc
+  become: yes
+  vars_files:
+    - ../group_vars/libresbc.yml
+  roles:
+    - libresbc_packages_runner

@@ -1,0 +1,4 @@
+---
+- import_playbook: playbooks/10-bootstrap.yml
+- import_playbook: playbooks/20-ha.yml
+- import_playbook: playbooks/30-libresbc.yml

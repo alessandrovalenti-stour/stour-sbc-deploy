@@ -1,0 +1,17 @@
+---
+- apt:
+    update_cache: yes
+
+- apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - rsync
+      - unzip
+      - jq
+      - python3
+      - python3-pip
+      - awscli
+      - chrony
+    state: present

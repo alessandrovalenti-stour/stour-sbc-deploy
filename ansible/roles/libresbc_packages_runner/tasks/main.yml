@@ -1,0 +1,85 @@
+---
+- name: "Install dependencies for LibreSBC"
+  apt:
+    name:
+      - git
+      - make
+      - curl
+      - gnupg2
+      - lsb-release
+      - ca-certificates
+      - sudo
+      - ansible-core
+    state: present
+    update_cache: yes
+
+- name: "Clone LibreSBC repository"
+  git:
+    repo: "{{ libresbc_repo }}"
+    dest: "/opt/libresbc"
+    version: "{{ libresbc_version }}"
+    force: yes
+
+- name: "Install required Ansible collections"
+  command:
+    cmd: "ansible-galaxy collection install community.docker"
+  register: galaxy_install_output
+  changed_when: "'Installing' in galaxy_install_output.stdout"
+
+- name: "Fix syntax error in platform/tasks/debian.yml"
+  replace:
+    path: "/opt/libresbc/ansible/roles/platform/tasks/debian.yml"
+    regexp: 'default\(UTC\)'
+    replace: "default('UTC')"
+
+- name: "Create dummy vault password file"
+  copy:
+    content: "dummy_password"
+    dest: "/root/.unknown.secret.vault"
+    mode: '0600'
+
+- name: "Fix syntax error in platform/tasks/debian.yml (hostname)"
+  replace:
+    path: "/opt/libresbc/ansible/roles/platform/tasks/debian.yml"
+    regexp: 'Change hostname (.*) to (.*)'
+    replace: 'Change hostname "\1" to "\2"'
+
+- name: "Ensure docker directory exists in libresbc-container/tasks/provision.yml"
+  replace:
+    path: "/opt/libresbc/ansible/roles/libresbc-container/tasks/provision.yml"
+    regexp: '(- name: Provisioning docker-compose.yml for container)'
+    replace: |
+      - name: Create docker directory
+        ansible.builtin.file:
+          path: "{{ '{{' }} libresbc_docker_path {{ '}}' }}"
+          state: directory
+          owner: root
+          group: root
+          mode: "0755"
+
+      \1
+
+- name: "Run LibreSBC installer (Ansible wrapper)"
+  command:
+    cmd: "ansible-playbook -i 'localhost,' -c local playbooks/deployment.yml --tags '{{ libresbc_playbook_tags }}' -e 'nodeid={{ inventory_hostname | replace('_', '-') }}' -e 'libreui_db_password=ChangeMe123' -e 'libreui_db_user=libreui' -e 'libreui_db_name=libreui' -e 'libreui_jwt_secret=ChangeMeSecret' -e '{\"redis\":{\"host\":\"127.0.0.1\",\"port\":6379,\"database\":0,\"password\":\"\"}, \"with_source\": true, \"srcdir\": \"/opt/libresbc\"}' -e 'liberator_api_url=http://127.0.0.1:8080'"
+    chdir: "/opt/libresbc/ansible"
+  register: libresbc_install_output
+  changed_when: "'changed=0' not in libresbc_install_output.stdout"
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: "Install fs_cli wrapper script for Docker"
+  copy:
+    dest: "/usr/local/bin/fs_cli"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      if [ -t 0 ]; then
+          sudo docker exec -it switch fs_cli -p LIBRESBC "$@"
+      else
+          sudo docker exec -i switch fs_cli -p LIBRESBC "$@"
+      fi
+
+- name: "Show LibreSBC install output"
+  debug:
+    var: libresbc_install_output.stdout_lines

@@ -1,0 +1,4 @@
+---
+- name: "Placeholder for HA Keepalived EIP configuration"
+  debug:
+    msg: "TODO: Implement Keepalived EIP failover configuration. VIP Allocation ID: {{ vip_allocation_id }}"

@@ -1,0 +1,14 @@
+---
+aws_region: eu-west-2
+vip_allocation_id: ""
+sbc_iface: ens5
+vrrp_instance_name: VI_SBC
+vrrp_router_id: 51
+vrrp_auth_pass: ChangeMe
+sip_check_port: 5060
+libresbc_repo: https://github.com/hnimminh/libresbc.git
+libresbc_version: master
+libresbc_workdir: ../_vendor/libresbc
+libresbc_debian_codename: bookworm
+libresbc_playbook_tags: platform,docker,libresbc-container,libreui
+signalwire_pat_token: ""
