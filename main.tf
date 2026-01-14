@@ -73,8 +73,65 @@ resource "aws_security_group" "sbc" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Allow all traffic from Controller
+  ingress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    security_groups = [aws_security_group.controller.id]
+  }
+
   tags = {
     Name        = "${var.project}-sbc-sg"
+    Environment = "non-production"
+  }
+}
+
+# --- Security Group for Controller ---
+resource "aws_security_group" "controller" {
+  name        = "${var.project}-controller-sg"
+  description = "Security group for the WebGUI controller"
+  vpc_id      = var.existing_vpc_id
+
+  # SSH access
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  # WebGUI access (FastAPI default 8000, plus standard web ports)
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  ingress {
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project}-controller-sg"
     Environment = "non-production"
   }
 }
@@ -176,6 +233,21 @@ resource "aws_instance" "sbc_b" {
   }
 }
 
+resource "aws_instance" "controller" {
+  ami                         = data.aws_ami.debian_12.id
+  instance_type               = var.instance_type
+  subnet_id                   = var.subnet_a_id
+  vpc_security_group_ids      = [aws_security_group.controller.id]
+  key_name                    = var.ssh_key_name
+  associate_public_ip_address = true
+
+  tags = {
+    Name        = "${var.project}-controller"
+    Role        = "controller"
+    Environment = "non-production"
+  }
+}
+
 # --- Elastic IP "VIP" ---
 resource "aws_eip" "vip" {
   domain = "vpc"
@@ -200,6 +272,13 @@ resource "local_file" "ansible_inventory" {
   sbc_b ansible_host=${aws_instance.sbc_b.public_ip} private_ip=${aws_instance.sbc_b.private_ip} priority=100 state=BACKUP
 
   [libresbc:vars]
+  ansible_user=admin
+  ansible_ssh_private_key_file=~/.ssh/stour-sbc-key.pem
+
+  [controller]
+  controller ansible_host=${aws_instance.controller.public_ip} private_ip=${aws_instance.controller.private_ip}
+
+  [controller:vars]
   ansible_user=admin
   ansible_ssh_private_key_file=~/.ssh/stour-sbc-key.pem
   EOT

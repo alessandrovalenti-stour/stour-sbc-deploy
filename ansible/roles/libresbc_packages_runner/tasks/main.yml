@@ -59,6 +59,12 @@
 
       \1
 
+- name: "Bind LibreUI to AWS private IP"
+  replace:
+    path: "/opt/libresbc/ansible/roles/libreui/files/libreui.service"
+    regexp: "-H 0.0.0.0"
+    replace: "-H {{ private_ip }}"
+
 - name: "Run LibreSBC installer (Ansible wrapper)"
   command:
     cmd: "ansible-playbook -i 'localhost,' -c local playbooks/deployment.yml --tags '{{ libresbc_playbook_tags }}' -e 'nodeid={{ inventory_hostname | replace('_', '-') }}' -e 'libreui_db_password=ChangeMe123' -e 'libreui_db_user=libreui' -e 'libreui_db_name=libreui' -e 'libreui_jwt_secret=ChangeMeSecret' -e '{\"redis\":{\"host\":\"127.0.0.1\",\"port\":6379,\"database\":0,\"password\":\"\"}, \"with_source\": true, \"srcdir\": \"/opt/libresbc\"}' -e 'liberator_api_url=http://127.0.0.1:8080'"
