@@ -4,6 +4,10 @@ provider "aws" {
 
 data "aws_availability_zones" "available" {}
 
+data "aws_vpc" "selected" {
+  id = var.existing_vpc_id
+}
+
 locals {
   az_a = data.aws_availability_zones.available.names[0]
   az_b = data.aws_availability_zones.available.names[1]
@@ -21,12 +25,12 @@ resource "aws_security_group" "sbc" {
   description = "SIP/RTP/SSH for LibreSBC PoC"
   vpc_id      = var.existing_vpc_id
 
-  # SSH (temporary: 0.0.0.0/0 as per your choice)
+  # SSH (restricted to internal 10.0.0.0/8)
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.admin_cidr]
+    cidr_blocks = ["10.0.0.0/8"]
   }
 
   # SIP UDP 5060
@@ -66,6 +70,14 @@ resource "aws_security_group" "sbc" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # LibreUI access from management subnet and internal VPC
+  ingress {
+    from_port   = 8088
+    to_port     = 8088
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/8"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -93,12 +105,12 @@ resource "aws_security_group" "controller" {
   description = "Security group for the WebGUI controller"
   vpc_id      = var.existing_vpc_id
 
-  # SSH access
+  # SSH access (restricted to internal 10.0.0.0/8)
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.admin_cidr]
+    cidr_blocks = ["10.0.0.0/8"]
   }
 
   # WebGUI access (FastAPI default 8000, plus standard web ports)
@@ -206,12 +218,22 @@ resource "aws_instance" "sbc_a" {
   iam_instance_profile        = aws_iam_instance_profile.this.name
   associate_public_ip_address = true
 
+  root_block_device {
+    volume_size = var.sbc_root_volume_size
+    volume_type = "gp3"
+  }
+
   tags = {
     Name        = "${var.project}-sbc-a"
     Role        = "libresbc"
     Node        = "A"
     AZ          = "eu-west-2a"
     Environment = "non-production"
+  }
+
+  metadata_options {
+    http_tokens   = "required"
+    http_endpoint = "enabled"
   }
 }
 
@@ -224,12 +246,22 @@ resource "aws_instance" "sbc_b" {
   iam_instance_profile        = aws_iam_instance_profile.this.name
   associate_public_ip_address = true
 
+  root_block_device {
+    volume_size = var.sbc_root_volume_size
+    volume_type = "gp3"
+  }
+
   tags = {
     Name        = "${var.project}-sbc-b"
     Role        = "libresbc"
     Node        = "B"
     AZ          = "eu-west-2b"
     Environment = "non-production"
+  }
+
+  metadata_options {
+    http_tokens   = "required"
+    http_endpoint = "enabled"
   }
 }
 
@@ -241,10 +273,20 @@ resource "aws_instance" "controller" {
   key_name                    = var.ssh_key_name
   associate_public_ip_address = true
 
+  root_block_device {
+    volume_size = var.controller_root_volume_size
+    volume_type = "gp3"
+  }
+
   tags = {
     Name        = "${var.project}-controller"
     Role        = "controller"
     Environment = "non-production"
+  }
+
+  metadata_options {
+    http_tokens   = "required"
+    http_endpoint = "enabled"
   }
 }
 
@@ -261,6 +303,112 @@ resource "aws_eip" "vip" {
 resource "aws_eip_association" "vip_to_a" {
   allocation_id = aws_eip.vip.id
   instance_id   = aws_instance.sbc_a.id
+}
+
+resource "aws_sns_topic" "alerts" {
+  name = "${var.project}-alerts"
+}
+
+resource "aws_cloudwatch_metric_alarm" "sbc_a_cpu_high" {
+  alarm_name          = "${var.project}-sbc-a-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+
+  dimensions = {
+    InstanceId = aws_instance.sbc_a.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "sbc_b_cpu_high" {
+  alarm_name          = "${var.project}-sbc-b-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+
+  dimensions = {
+    InstanceId = aws_instance.sbc_b.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "controller_cpu_high" {
+  alarm_name          = "${var.project}-controller-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+
+  dimensions = {
+    InstanceId = aws_instance.controller.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "sbc_a_status_check_failed" {
+  alarm_name          = "${var.project}-sbc-a-status-check-failed"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "StatusCheckFailed"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 1
+
+  dimensions = {
+    InstanceId = aws_instance.sbc_a.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "sbc_b_status_check_failed" {
+  alarm_name          = "${var.project}-sbc-b-status-check-failed"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "StatusCheckFailed"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 1
+
+  dimensions = {
+    InstanceId = aws_instance.sbc_b.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "controller_status_check_failed" {
+  alarm_name          = "${var.project}-controller-status-check-failed"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "StatusCheckFailed"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 1
+
+  dimensions = {
+    InstanceId = aws_instance.controller.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
 }
 
 # --- Generate Ansible inventory (optional, handy) ---

@@ -28,6 +28,16 @@ variable "instance_type" {
   default = "t3.medium"
 }
 
+variable "sbc_root_volume_size" {
+  type    = number
+  default = 50
+}
+
+variable "controller_root_volume_size" {
+  type    = number
+  default = 150
+}
+
 variable "ssh_key_name" {
   description = "Existing EC2 KeyPair name"
   type        = string

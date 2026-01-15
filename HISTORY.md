@@ -95,3 +95,24 @@ Chronological overview of the main changes made to this project.
   - `README.md` is the single source of truth for usage and deployment.
   - `DEPLOY.md` was removed from the repository.
 
+## Phase 9 – Security review and history tracking
+
+- Added `HISTORY.md` to track the chronological evolution of the project:
+  - Captures major architectural, infrastructure, and configuration changes.
+  - Helps operators understand how the deployment model has evolved over time.
+- Performed a security review of the Git repository contents:
+  - Verified that no SSH keys (`*.pem`, `*.key`) are tracked.
+  - Confirmed that Terraform state files (`*.tfstate`, `*.tfstate.backup`) are git-ignored.
+  - Checked for common secret patterns (AWS keys, tokens, private keys, passwords).
+  - Ensured that only placeholder values (e.g. `ChangeMe123`, `ChangeMeSecret`, `dummy_password`) and empty tokens are present in tracked files.
+
+## Phase 10 – Internal VPC Access for LibreUI
+
+- Updated Terraform `main.tf` to dynamically retrieve the VPC CIDR using `data "aws_vpc"`.
+- Added a security group ingress rule to `sbc-sg` allowing TCP port `8088` (LibreUI) from the entire VPC CIDR block.
+- This ensures LibreUI is accessible from other instances in the VPC (like the controller) when bound to the private IP.
+
+## Phase 11 – Direct Admin Access for LibreUI
+
+- Updated Terraform `main.tf` to allow ingress on TCP port `8088` from the Admin CIDR (`var.admin_cidr`) in addition to the VPC CIDR.
+- This allows operators to access the LibreUI Web GUI directly from their trusted IP address without needing an SSH tunnel.
