@@ -116,3 +116,10 @@ Chronological overview of the main changes made to this project.
 
 - Updated Terraform `main.tf` to allow ingress on TCP port `8088` from the Admin CIDR (`var.admin_cidr`) in addition to the VPC CIDR.
 - This allows operators to access the LibreUI Web GUI directly from their trusted IP address without needing an SSH tunnel.
+
+## Phase 12 – Monitoring and instance hardening
+
+- Added an SNS topic (`${var.project}-alerts`) and CloudWatch alarms in Terraform for:
+  - High CPU utilization on `sbc_a`, `sbc_b`, and `controller`.
+  - EC2 status check failures on `sbc_a`, `sbc_b`, and `controller`.
+- Enforced IMDSv2 on all EC2 instances by setting `metadata_options` with `http_tokens = "required"` and keeping the metadata endpoint enabled.
